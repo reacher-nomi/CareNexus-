@@ -1,0 +1,196 @@
+/* App.css */
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+}
+
+.ehr-root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #352c2f; 
+}
+
+.ehr-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #3366cc;
+  color: #fff;
+  padding: 4px 10px;
+  font-size: 14px;
+}
+
+.ehr-main {
+  flex: 1;
+  display: flex;
+  padding: 6px;
+  gap: 6px;
+}
+
+/* LEFT PANEL */
+.ehr-left {
+  width: 260px;
+  background: #f0e2ea;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-right: 1px solid #999;
+}
+
+.patient-header {
+  display: flex;
+  gap: 6px;
+  background: #e7d3dd;
+  padding: 4px;
+}
+
+.patient-photo {
+  width: 70px;
+  height: 90px;
+  background: #ccc;
+}
+
+.patient-info {
+  flex: 1;
+  font-size: 11px;
+}
+
+.patient-name-row {
+  display: flex;
+  align-items: center;
+}
+
+.patient-name-row .label {
+  width: 40px;
+  font-weight: bold;
+}
+
+.patient-name-row .field {
+  flex: 1;
+  background: #f9f9f9;
+  border: 1px solid #bbb;
+  padding: 2px 4px;
+}
+
+.patient-meta {
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.panel {
+  background: #e7d3dd;
+  padding: 4px;
+  font-size: 11px;
+}
+
+.panel-title {
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.list {
+  width: 100%;
+}
+
+.notes {
+  width: 100%;
+  resize: none;
+  font-size: 11px;
+}
+
+/* CENTER PANEL */
+.ehr-center {
+  flex: 1;
+  background: #f4dde5;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.section-title {
+  margin: 0 0 8px;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.field-row label {
+  min-width: 170px;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.field-row input {
+  flex: 1;
+  padding: 4px;
+  border: 1px solid #bbb;
+  background: #fff;
+}
+
+/* Image area */
+.image-area {
+  flex: 1;
+  display: flex;
+  margin-top: 12px;
+  gap: 6px;
+}
+
+.image-placeholder {
+  flex: 1;
+  background: #000;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+/* Bottom navigation */
+.bottom-nav {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+  gap: 6px;
+}
+
+.bottom-nav .spacer {
+  flex: 1;
+}
+
+.bottom-nav button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.bottom-nav .page-info {
+  font-size: 12px;
+}
+
+/* Date Picker Styles */
+.date-picker-wrapper {
+  width: 100%;
+}
+
+.date-picker-input {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #bbb;
+  background: #fff;
+  font-size: 12px;
+}
+
+.react-datepicker-wrapper {
+  width: 100%;
+}
+
+.react-datepicker__input-container input {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #bbb;
+  background: #fff;
+  font-size: 12px;
+}
