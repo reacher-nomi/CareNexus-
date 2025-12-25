@@ -35,3 +35,27 @@ CREATE TABLE digestive_visit (
   image_path VARCHAR(255),
   FOREIGN KEY (patient_id) REFERENCES patients(id)
 );
+
+CREATE TABLE sheet_entries (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    patient_id INT NOT NULL,
+    visit_id INT,
+    sheet_type VARCHAR(50) NOT NULL,
+    data_json TEXT,
+    doctor_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+    FOREIGN KEY (visit_id) REFERENCES visits(id) ON DELETE SET NULL,
+    FOREIGN KEY (doctor_id) REFERENCES doctors(id)
+);
+CREATE TABLE documents (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    patient_id INT NOT NULL,
+    doctor_id INT NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(255) NOT NULL,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+    FOREIGN KEY (doctor_id) REFERENCES doctors(id)
+);

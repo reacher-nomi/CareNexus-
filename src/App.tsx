@@ -4,6 +4,8 @@ import PatientSearch from "./components/PatientSearch";
 import CreatePatientModal from "./components/CreatePatientModal";
 import VisitHistory from "./components/VisitHistory";
 import AuthForm from "./components/AuthForm";
+import SheetForm from "./components/SheetForm";
+import DocumentManager from "./components/DocumentManager";
 
 const API_BASE = "http://localhost:5000/api";
 
@@ -36,14 +38,21 @@ interface Digestive {
   notes: string;
 }
 
+// Define sheet order for navigation
+const SHEET_ORDER = ["digestive", "neurologic", "vascular", "cardiac", "respiratory", "abdomen"] as const;
+type SheetType = typeof SHEET_ORDER[number];
+
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loginData, setLoginData] = useState({ doctor_number: "", password: "" });
   const [patient, setPatient] = useState<Patient | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [pendingInsuranceNumber, setPendingInsuranceNumber] = useState("");
   const [currentVisitId, setCurrentVisitId] = useState<number | null>(null);
+  const [selectedSheet, setSelectedSheet] = useState<SheetType | null>(null);
+  const [showDocManager, setShowDocManager] = useState(false);
+  const [searchKey, setSearchKey] = useState(0); // Force PatientSearch to reset
+  
   const [digestive, setDigestive] = useState<Digestive>({
     visit_date: "",
     digestive_inspection: "",
@@ -56,44 +65,24 @@ function App() {
     notes: "",
   });
 
-  // Check if user is already logged in on app load
   useEffect(() => {
     fetch(`${API_BASE}/check-auth`, {
       credentials: "include",
     })
-      .then((res) => res.json())
-      .then((data) => {
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = await res.json();
         if (data.authenticated) {
           setIsLoggedIn(true);
         }
       })
-      .catch(() => {
-        // Not logged in, stay on login page
-      });
+      .catch(() => {});
   }, []);
-
-  const handleLogin = () => {
-    fetch(`${API_BASE}/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(loginData),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.message) {
-          setIsLoggedIn(true);
-        } else {
-          alert("Login failed");
-        }
-      })
-      .catch((err) => console.error(err));
-  };
 
   const handlePatientFound = (foundPatient: Patient, patientVisits: Visit[]) => {
     setPatient(foundPatient);
     setVisits(patientVisits);
-    // Create a new visit for this session if no current visit
+    setSelectedSheet(null); // Reset to default view
     if (patientVisits.length === 0 || !currentVisitId) {
       createNewVisit(foundPatient.id);
     }
@@ -108,7 +97,8 @@ function App() {
     setPatient(newPatient);
     setVisits([]);
     setShowCreateModal(false);
-    // Create a new visit for the new patient
+    setSelectedSheet(null);
+    setSearchKey(prev => prev + 1); // Force search component to reset
     createNewVisit(newPatient.id);
   };
 
@@ -129,7 +119,6 @@ function App() {
       const data = await response.json();
       if (data.visit) {
         setCurrentVisitId(data.visit.id);
-        // Refresh visits list
         loadPatientVisits(patientId);
       }
     } catch (err) {
@@ -175,20 +164,30 @@ function App() {
       body: JSON.stringify(digestive),
     })
       .then((res) => res.json())
-      .then((data) => alert("Saved"))
+      .then(() => alert("Saved"))
       .catch((err) => console.error(err));
   };
 
+  // Navigation helpers
+  const navigateSheet = (direction: "next" | "prev") => {
+    const currentIndex = selectedSheet ? SHEET_ORDER.indexOf(selectedSheet) : 0;
+    let newIndex;
+    
+    if (direction === "next") {
+      newIndex = (currentIndex + 1) % SHEET_ORDER.length;
+    } else {
+      newIndex = (currentIndex - 1 + SHEET_ORDER.length) % SHEET_ORDER.length;
+    }
+    
+    setSelectedSheet(SHEET_ORDER[newIndex]);
+  };
 
   if (!isLoggedIn) {
-    return (
-      <AuthForm onAuthSuccess={() => setIsLoggedIn(true)} />
-    );
+    return <AuthForm onAuthSuccess={() => setIsLoggedIn(true)} />;
   }
 
   return (
     <div className="ehr-root">
-      {/* Top bar */}
       <header className="ehr-topbar">
         <div className="ehr-title">Handy Patients Enterprise Edition</div>
         <div className="ehr-top-right">
@@ -202,15 +201,13 @@ function App() {
       </header>
 
       <div className="ehr-main">
-        {/* LEFT PANEL */}
         <aside className="ehr-left">
-          {/* Patient Search */}
           <PatientSearch
+            key={searchKey}
             onPatientFound={handlePatientFound}
             onPatientNotFound={handlePatientNotFound}
           />
 
-          {/* Patient header */}
           {patient ? (
             <>
               <div className="patient-header">
@@ -232,14 +229,11 @@ function App() {
                     Age: {patient.birth_date ? calculateAge(patient.birth_date) : "N/A"}
                   </div>
                   {patient.insurance_number && (
-                    <div className="patient-meta">
-                      Insurance: {patient.insurance_number}
-                    </div>
+                    <div className="patient-meta">Insurance: {patient.insurance_number}</div>
                   )}
                 </div>
               </div>
 
-              {/* Visit History */}
               <VisitHistory visits={visits} />
             </>
           ) : (
@@ -251,29 +245,51 @@ function App() {
             </div>
           )}
 
-          {/* Forms & Sheets */}
           <div className="panel">
             <div className="panel-title">Forms</div>
-            <select className="list" size={6}>
-              <option>Meeting (Doctor)</option>
-              <option>Full status (Doctor)</option>
-              <option>Assistant</option>
-              <option>Billing</option>
+            <select
+              className="list"
+              size={6}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === "custom") {
+                  alert("Custom form builder coming soon!");
+                } else if (value) {
+                  alert(`Form "${value}" not yet implemented`);
+                }
+                e.target.value = "";
+              }}
+            >
+              <option value="">Select a form...</option>
+              <option value="meeting">Meeting (Doctor)</option>
+              <option value="full_status">Full status (Doctor)</option>
+              <option value="assistant">Assistant</option>
+              <option value="billing">Billing</option>
+              <option value="custom">+ Create Custom Form</option>
             </select>
           </div>
 
           <div className="panel">
             <div className="panel-title">Sheets</div>
-            <select className="list" size={6}>
-              <option>O: Neurologic</option>
-              <option>O: Vascular</option>
-              <option>O: Cardiac</option>
-              <option>O: Respiratory</option>
-              <option>O: Abdomen</option>
+            <select
+              className="list"
+              size={6}
+              value={selectedSheet || ""}
+              onChange={(e) => {
+                const value = e.target.value as SheetType;
+                setSelectedSheet(value || null);
+              }}
+            >
+              <option value="">Select a sheet...</option>
+              <option value="digestive">Digestive</option>
+              <option value="neurologic">O: Neurologic</option>
+              <option value="vascular">O: Vascular</option>
+              <option value="cardiac">O: Cardiac</option>
+              <option value="respiratory">O: Respiratory</option>
+              <option value="abdomen">O: Abdomen</option>
             </select>
           </div>
 
-          {/* Diagnosis & Notes */}
           {patient && (
             <>
               <div className="panel diagnosis">
@@ -288,62 +304,96 @@ function App() {
 
               <div className="panel">
                 <div className="panel-title">Notes</div>
-                <textarea className="notes" rows={3} defaultValue="Father asks many questions, add 10 minutes to consultation" />
+                <textarea
+                  className="notes"
+                  rows={3}
+                  defaultValue="Father asks many questions, add 10 minutes to consultation"
+                />
               </div>
             </>
           )}
         </aside>
 
-        {/* CENTER PANEL */}
         <section className="ehr-center">
-          {patient ? (
+          {!patient ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "#666" }}>
+              <h2>No Patient Selected</h2>
+              <p>Please search for a patient using the search panel on the left.</p>
+            </div>
+          ) : selectedSheet && selectedSheet !== "digestive" ? (
+            <SheetForm
+              patientId={patient.id}
+              visitId={currentVisitId || 0}
+              sheetType={selectedSheet}
+              onSave={() => {
+                console.log("Sheet saved");
+                loadPatientVisits(patient.id);
+              }}
+              onBack={() => setSelectedSheet(null)}
+            />
+          ) : (
             <>
               <h2 className="section-title">Digestive</h2>
 
-              <div className="field-row">
-                <label>Digestive inspection</label>
-                <input
-                  type="text"
-                  value={digestive.digestive_inspection || ""}
-                  onChange={(e) => handleDigestiveChange("digestive_inspection", e.target.value)}
-                />
-              </div>
-              <div className="field-row">
-                <label>Digestive auscultation</label>
-                <input
-                  type="text"
-                  value={digestive.digestive_auscultation || ""}
-                  onChange={(e) => handleDigestiveChange("digestive_auscultation", e.target.value)}
-                />
-              </div>
-              <div className="field-row">
-                <label>Digestive palpation</label>
-                <input
-                  type="text"
-                  value={digestive.digestive_palpation || ""}
-                  onChange={(e) => handleDigestiveChange("digestive_palpation", e.target.value)}
-                />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>
+                    Digestive inspection
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={digestive.digestive_inspection || ""}
+                    onChange={(e) => handleDigestiveChange("digestive_inspection", e.target.value)}
+                    style={{ width: "100%", padding: "8px", border: "1px solid #ccc", fontSize: "13px" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>
+                    Digestive auscultation
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={digestive.digestive_auscultation || ""}
+                    onChange={(e) => handleDigestiveChange("digestive_auscultation", e.target.value)}
+                    style={{ width: "100%", padding: "8px", border: "1px solid #ccc", fontSize: "13px" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>
+                    Digestive palpation
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={digestive.digestive_palpation || ""}
+                    onChange={(e) => handleDigestiveChange("digestive_palpation", e.target.value)}
+                    style={{ width: "100%", padding: "8px", border: "1px solid #ccc", fontSize: "13px" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Liver</label>
+                  <textarea
+                    rows={3}
+                    value={digestive.liver || ""}
+                    onChange={(e) => handleDigestiveChange("liver", e.target.value)}
+                    style={{ width: "100%", padding: "8px", border: "1px solid #ccc", fontSize: "13px" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}>Rectal</label>
+                  <textarea
+                    rows={3}
+                    value={digestive.rectal || ""}
+                    onChange={(e) => handleDigestiveChange("rectal", e.target.value)}
+                    style={{ width: "100%", padding: "8px", border: "1px solid #ccc", fontSize: "13px" }}
+                  />
+                </div>
               </div>
 
-              <div className="field-row">
-                <label>Liver</label>
-                <input
-                  type="text"
-                  value={digestive.liver || ""}
-                  onChange={(e) => handleDigestiveChange("liver", e.target.value)}
-                />
-              </div>
-              <div className="field-row">
-                <label>Rectal</label>
-                <input
-                  type="text"
-                  value={digestive.rectal || ""}
-                  onChange={(e) => handleDigestiveChange("rectal", e.target.value)}
-                />
-              </div>
-
-              {/* Smoker checkbox */}
-              <div className="field-row">
+              <div style={{ marginTop: "20px" }}>
                 <label>
                   <input
                     type="checkbox"
@@ -354,34 +404,30 @@ function App() {
                 </label>
               </div>
 
-              {/* Insurance type radio */}
-              <div className="field-row">
-                <label>Insurance Type</label>
-                <div>
-                  <label>
-                    <input
-                      type="radio"
-                      name="insurance"
-                      value="public"
-                      checked={digestive.insurance_type === "public"}
-                      onChange={(e) => handleDigestiveChange("insurance_type", e.target.value)}
-                    />
-                    Public
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      name="insurance"
-                      value="private"
-                      checked={digestive.insurance_type === "private"}
-                      onChange={(e) => handleDigestiveChange("insurance_type", e.target.value)}
-                    />
-                    Private
-                  </label>
-                </div>
+              <div style={{ marginTop: "15px" }}>
+                <label style={{ marginRight: "20px" }}>Insurance Type:</label>
+                <label style={{ marginRight: "15px" }}>
+                  <input
+                    type="radio"
+                    name="insurance"
+                    value="public"
+                    checked={digestive.insurance_type === "public"}
+                    onChange={(e) => handleDigestiveChange("insurance_type", e.target.value)}
+                  />
+                  Public
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="insurance"
+                    value="private"
+                    checked={digestive.insurance_type === "private"}
+                    onChange={(e) => handleDigestiveChange("insurance_type", e.target.value)}
+                  />
+                  Private
+                </label>
               </div>
 
-              {/* Bottom image area */}
               <div className="image-area">
                 <div className="image-placeholder left">Patient photo / drawing</div>
                 <div className="image-placeholder right">Digestive system diagram</div>
@@ -390,22 +436,16 @@ function App() {
               <div className="bottom-nav">
                 <button onClick={saveDigestive}>Save</button>
                 <div className="spacer" />
-                <button>Documents manager</button>
+                <button onClick={() => setShowDocManager(true)}>Documents manager</button>
                 <div className="spacer" />
-                <button>Previous page</button>
-                <button>Next page</button>
+                <button onClick={() => navigateSheet("prev")}>Previous page</button>
+                <button onClick={() => navigateSheet("next")}>Next page</button>
               </div>
             </>
-          ) : (
-            <div style={{ padding: "40px", textAlign: "center", color: "#666" }}>
-              <h2>No Patient Selected</h2>
-              <p>Please search for a patient using the search panel on the left.</p>
-            </div>
           )}
         </section>
       </div>
 
-      {/* Create Patient Modal */}
       {showCreateModal && (
         <CreatePatientModal
           insuranceNumber={pendingInsuranceNumber}
@@ -413,9 +453,12 @@ function App() {
           onPatientCreated={handlePatientCreated}
         />
       )}
+
+      {showDocManager && currentVisitId && (
+        <DocumentManager visitId={currentVisitId} onClose={() => setShowDocManager(false)} />
+      )}
     </div>
   );
 }
 
 export default App;
-

@@ -7,18 +7,22 @@ from datetime import date, timedelta
 from config import DB_CONFIG, SECRET_KEY
 import os
 import uuid
+import json
+
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = SECRET_KEY
 CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
 
+
 app.config.update(
     SESSION_COOKIE_NAME="ehr_session",
-    SESSION_COOKIE_SAMESITE="LAX",   # allow cross-site cookie
+    SESSION_COOKIE_SAMESITE="Lax",   # allow cross-site cookie
     SESSION_COOKIE_SECURE=False,      # True only when using https
     SESSION_COOKIE_HTTPONLY=True,
     PERMANENT_SESSION_LIFETIME=timedelta(hours=6),
 )
+
 
 # Configure upload folder
 UPLOAD_FOLDER = 'static/uploads'
@@ -26,8 +30,10 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
+
 # Create upload folder if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -44,6 +50,7 @@ def me():
     if "doctor_id" not in session:
         return jsonify({"error": "Not authenticated"}), 401
     return jsonify({"doctor_id": session["doctor_id"]})
+
 
 @app.route("/api/register", methods=["POST"])
 def register():
@@ -537,6 +544,130 @@ def get_visit(visit_id):
     return jsonify({"visit": visit, "documents": documents})
 
 
+# ---------- SHEET ENDPOINTS (NEW) ----------
+
+@app.route("/api/sheets/<sheet_type>/<int:patient_id>/latest", methods=["GET"])
+def get_latest_sheet(sheet_type, patient_id):
+    """Get latest sheet for patient"""
+    ok, doc_or_resp, code = require_login()
+    if not ok:
+        return doc_or_resp, code
+    
+    visit_id = request.args.get("visit_id")
+    
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    
+    query = """
+        SELECT * FROM sheet_entries 
+        WHERE patient_id = %s AND sheet_type = %s
+        ORDER BY created_at DESC LIMIT 1
+    """
+    cur.execute(query, (patient_id, sheet_type))
+    entry = cur.fetchone()
+    
+    cur.close()
+    conn.close()
+    
+    if entry:
+        entry['data'] = json.loads(entry['data_json']) if entry.get('data_json') else {}
+        if entry.get('created_at'):
+            entry['created_at'] = str(entry['created_at'])
+        if entry.get('updated_at'):
+            entry['updated_at'] = str(entry['updated_at'])
+        return jsonify(entry)
+    return jsonify({"data": {}})
+
+
+@app.route("/api/sheets/<sheet_type>/<int:patient_id>/history", methods=["GET"])
+def get_sheet_history(sheet_type, patient_id):
+    """Get sheet history"""
+    ok, doc_or_resp, code = require_login()
+    if not ok:
+        return doc_or_resp, code
+    
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    
+    cur.execute("""
+        SELECT se.id, se.created_at, v.visit_date
+        FROM sheet_entries se
+        LEFT JOIN visits v ON se.visit_id = v.id
+        WHERE se.patient_id = %s AND se.sheet_type = %s
+        ORDER BY se.created_at DESC
+    """, (patient_id, sheet_type))
+    
+    history = cur.fetchall()
+    for entry in history:
+        if entry.get('created_at'):
+            entry['created_at'] = str(entry['created_at'])
+        if entry.get('visit_date'):
+            entry['visit_date'] = str(entry['visit_date'])
+    
+    cur.close()
+    conn.close()
+    
+    return jsonify({"history": history})
+
+
+@app.route("/api/sheets/<sheet_type>", methods=["POST"])
+def save_sheet(sheet_type):
+    """Save sheet"""
+    ok, doc_or_resp, code = require_login()
+    if not ok:
+        return doc_or_resp, code
+    doctor_id = doc_or_resp
+    
+    data = request.json
+    patient_id = data.get("patient_id")
+    visit_id = data.get("visit_id")
+    sheet_data = data.get("data", {})
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    try:
+        cur.execute("""
+            INSERT INTO sheet_entries 
+            (patient_id, visit_id, sheet_type, data_json, doctor_id)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (patient_id, visit_id, sheet_type, json.dumps(sheet_data), doctor_id))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"message": "Sheet saved"}), 201
+    except Exception as e:
+        conn.rollback()
+        cur.close()
+        conn.close()
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/sheets/entry/<int:entry_id>", methods=["GET"])
+def get_sheet_entry(entry_id):
+    """Get single sheet entry"""
+    ok, doc_or_resp, code = require_login()
+    if not ok:
+        return doc_or_resp, code
+    
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    cur.execute("SELECT * FROM sheet_entries WHERE id = %s", (entry_id,))
+    entry = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    if entry:
+        entry['data'] = json.loads(entry['data_json']) if entry.get('data_json') else {}
+        if entry.get('created_at'):
+            entry['created_at'] = str(entry['created_at'])
+        if entry.get('updated_at'):
+            entry['updated_at'] = str(entry['updated_at'])
+        return jsonify(entry)
+    return jsonify({"error": "Not found"}), 404
+
+
 # ---------- DOCUMENT UPLOAD ----------
 
 @app.route("/api/visits/<int:visit_id>/documents", methods=["POST"])
@@ -637,52 +768,6 @@ def upload_document(visit_id):
         if 'conn' in locals():
             conn.close()
         return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
-
-
-# ---------- PATIENT (for left panel header) - LEGACY ----------
-
-@app.route("/api/patient/current", methods=["GET"])
-def get_current_patient():
-    ok, doc_or_resp, code = require_login()
-    if not ok:
-        return doc_or_resp, code
-    doctor_id = doc_or_resp
-
-    conn = get_db()
-    cur = conn.cursor(dictionary=True)
-    # for demo: take first patient of doctor
-    cur.execute(
-        "SELECT * FROM patients WHERE doctor_id = %s ORDER BY id LIMIT 1",
-        (doctor_id,),
-    )
-    patient = cur.fetchone()
-    cur.close()
-    conn.close()
-
-    if not patient:
-        # create a demo patient if none
-        conn = get_db()
-        cur = conn.cursor(dictionary=True)
-        cur.execute(
-            """
-            INSERT INTO patients (doctor_id, first_name, last_name, birth_date)
-            VALUES (%s, %s, %s, %s)
-            """,
-            (doctor_id, "David", "Anderson", date(2009, 1, 5)),
-        )
-        conn.commit()
-        patient_id = cur.lastrowid
-        cur.close()
-        conn.close()
-        patient = {
-            "id": patient_id,
-            "doctor_id": doctor_id,
-            "first_name": "David",
-            "last_name": "Anderson",
-            "birth_date": "2009-01-05",
-        }
-
-    return jsonify(patient)
 
 
 # ---------- DIGESTIVE VISIT (center panel form) ----------
@@ -789,13 +874,6 @@ def save_digestive(patient_id):
         return jsonify({"message": "Saved"}), 200
     except mysql.connector.Error as e:
         conn.rollback()
-        # Duplicate entry for doctor_number or email gives friendlier error
-        if hasattr(e, 'errno') and e.errno == 1062:
-            error_str = str(e)
-            if 'doctor_number' in error_str:
-                return jsonify({"error": "Doctor number already exists."}), 400
-            if 'email' in error_str:
-                return jsonify({"error": "Email already exists."}), 400
         return jsonify({"error": str(e)}), 400
     finally:
         cur.close()
@@ -810,3 +888,4 @@ def uploaded_file(filename):
 
 if __name__ == "__main__":
     app.run(debug=True)
+
